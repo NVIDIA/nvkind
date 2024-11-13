@@ -22,8 +22,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/klueska/kind-with-gpus-examples/pkg/nvkind"
 	"github.com/urfave/cli/v2"
+
+	"github.com/NVIDIA/nvkind/pkg/nvkind"
 )
 
 type ClusterCreateFlags struct {

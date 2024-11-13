@@ -21,10 +21,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/klueska/kind-with-gpus-examples/pkg/nvkind"
 	"github.com/urfave/cli/v2"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+
+	"github.com/NVIDIA/nvkind/pkg/nvkind"
 )
 
 type NodeGPUs struct {

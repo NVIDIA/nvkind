@@ -1,4 +1,4 @@
-module github.com/klueska/kind-with-gpus-examples
+module github.com/NVIDIA/nvkind
 
 go 1.22.1
 

@@ -1,5 +1,5 @@
 GO_VERSION=1.22.1
-MODULE="github.com/klueska/kind-with-gpus-examples"
+MODULE="github.com/NVIDIA/nvkind"
 
 all: vendor fmt build
 
