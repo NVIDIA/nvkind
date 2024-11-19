@@ -20,8 +20,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/klueska/kind-with-gpus-examples/pkg/nvkind"
 	"github.com/urfave/cli/v2"
+
+	"github.com/NVIDIA/nvkind/pkg/nvkind"
 )
 
 func BuildClusterListCommand() *cli.Command {
