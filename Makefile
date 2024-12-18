@@ -29,3 +29,9 @@ build:
 
 run:
 	go run $(MODULE)/...
+
+check-vendor: vendor
+	@echo "- Checking if go.mod and go.sum are in sync..."
+	@git diff --exit-code -- go.sum go.mod
+	@echo "- Checking if the go mod vendor dir is in sync..."
+	@git diff --exit-code -- vendor
