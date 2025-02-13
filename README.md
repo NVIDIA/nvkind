@@ -103,6 +103,14 @@ GPU 5: NVIDIA A100-SXM4-40GB (UUID: GPU-3eb87630-93d5-b2b6-b8ff-9b359caf4ee2)
 GPU 6: NVIDIA A100-SXM4-40GB (UUID: GPU-8216274a-c05d-def0-af18-c74647300267)
 GPU 7: NVIDIA A100-SXM4-40GB (UUID: GPU-b1028956-cfa2-0990-bf4a-5da9abb51763)
 ```
+## Install nvkind
+
+To install nvkind using go install, run the following command:
+
+```bash
+go install github.com/NVIDIA/nvkind/cmd/nvkind@latest
+```
+
 ## Quickstart
 
 Assuming all of the [prerequisites](#prerequisites) have been meet and [setup
