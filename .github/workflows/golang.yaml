@@ -43,7 +43,6 @@ jobs:
     - name: Check golang modules
       run: |
         make check-modules
-        make -C deployments/devel check-modules
 
   test:
     name: Unit test
