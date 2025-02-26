@@ -13,3 +13,13 @@ updates:
     - dependency-name: k8s.io/*
     labels:
     - dependencies
+
+  - package-ecosystem: "docker"
+    target-branch: main
+    directories:
+    # Golang version
+    - "/deployments/devel"
+    schedule:
+      interval: "daily"
+    labels:
+    - dependencies
