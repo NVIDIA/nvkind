@@ -18,22 +18,22 @@ starting point to write your own tool.
 The following prerequisites are required to build and run `nvkind` as well as
 follow all of the examples provided in this README:
 
-    Prerequisite | Link
-    ------------ | -------------------------------------
-    go           | https://go.dev/doc/install
-    make         | https://www.gnu.org/software/make/#download
-    docker       | https://docs.docker.com/get-docker/
-    kind         | https://kind.sigs.k8s.io/docs/user/quick-start/#installation
-    kubectl      | https://kubernetes.io/docs/tasks/tools/
-    helm         | https://helm.sh/docs/intro/install/
+Prerequisite | Link
+------------ | -------------------------------------
+go           | https://go.dev/doc/install
+make         | https://www.gnu.org/software/make/#download
+docker       | https://docs.docker.com/get-docker/
+kind         | https://kind.sigs.k8s.io/docs/user/quick-start/#installation
+kubectl      | https://kubernetes.io/docs/tasks/tools/
+helm         | https://helm.sh/docs/intro/install/
 
 You must also ensure that you are running on a host with a working NVIDIA
 driver and an `nvidia-container-toolkit` configured for use with `docker`.
 
-    Prerequisite             | Link
-    ------------------------ | -------------------------------------
-    nvidia-driver            | https://www.nvidia.com/download/index.aspx
-    nvidia-container-toolkit | https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+Prerequisite             | Link
+------------------------ | -------------------------------------
+nvidia-driver            | https://www.nvidia.com/download/index.aspx
+nvidia-container-toolkit | https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
 
 Running `nvidia-smi -L` on a host with a functioning driver should produce
 output such as the following:
