@@ -111,6 +111,12 @@ To install nvkind using go install, run the following command:
 go install github.com/NVIDIA/nvkind/cmd/nvkind@latest
 ```
 
+You can also build it in the go container if you don't have go set up on your system:
+
+```bash
+ docker run --rm -v $PWD/bin/:/go/bin/ golang:1.23 go install github.com/NVIDIA/nvkind/cmd/nvkind@latest
+ ```
+
 ## Quickstart
 
 Assuming all of the [prerequisites](#prerequisites) have been meet and [setup
