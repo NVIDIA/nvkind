@@ -39,6 +39,6 @@ nodes:
     # in `/etc/nvidia-container-runtime/config.toml`
     {{- range $gpu := $gpus }}
     - hostPath: /dev/null
-      containerPath: /var/run/nvidia-container-devices/{{ $gpu }}
+      containerPath: /var/run/nvidia-container-devices/cdi/runtime.nvidia.com/gpu/{{ $gpu }}
     {{- end }}
 {{- end }}

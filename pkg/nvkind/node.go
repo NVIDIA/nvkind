@@ -177,10 +177,15 @@ func (n *Node) getNvidiaVisibleDevices() []string {
 		if mount.HostPath != "/dev/null" {
 			continue
 		}
-		if filepath.Dir(mount.ContainerPath) != "/var/run/nvidia-container-devices" {
-			continue
+		dir := filepath.Dir(mount.ContainerPath)
+		deviceID := filepath.Base(mount.ContainerPath)
+		switch {
+		case strings.HasPrefix(dir, "/var/run/nvidia-container-devices/cdi"):
+			cdiKind := strings.TrimPrefix(dir, "/var/run/nvidia-container-devices/cdi/")
+			devices = append(devices, cdiKind+"="+deviceID)
+		case dir == "/var/run/nvidia-container-devices":
+			devices = append(devices, deviceID)
 		}
-		devices = append(devices, filepath.Base(mount.ContainerPath))
 	}
 
 	return devices

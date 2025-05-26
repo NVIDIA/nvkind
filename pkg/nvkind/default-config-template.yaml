@@ -39,7 +39,7 @@ nodes:
     # in `/etc/nvidia-container-runtime/config.toml`
     {{- range $d := $devices }}
     - hostPath: /dev/null
-      containerPath: /var/run/nvidia-container-devices/{{ $d }}
+      containerPath: /var/run/nvidia-container-devices/cdi/runtime.nvidia.com/gpu/{{ $d }}
     {{- end }}
   {{- end }}
 {{- end }}
