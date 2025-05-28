@@ -5,7 +5,7 @@ go 1.22.1
 require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/NVIDIA/go-nvlib v0.2.0
-	github.com/urfave/cli/v2 v2.27.5
+	github.com/urfave/cli/v2 v2.27.6
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.29.3
 	k8s.io/apimachinery v0.29.3
