@@ -255,6 +255,7 @@ helm upgrade -i \
     --kube-context=kind-${KIND_CLUSTER_NAME} \
     --namespace nvidia \
     --create-namespace \
+    --set gfd.enabled=true \
     nvidia-device-plugin nvdp/nvidia-device-plugin
 ```
 
