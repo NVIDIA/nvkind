@@ -35,6 +35,7 @@ type ClusterCreateFlags struct {
 	ConfigTemplate string
 	ConfigValues   string
 	KubeConfig     string
+	SkipGPUSetup   bool
 }
 
 func BuildClusterCreateCommand() *cli.Command {
@@ -90,6 +91,12 @@ func BuildClusterCreateCommand() *cli.Command {
 			Destination: &flags.KubeConfig,
 			EnvVars:     []string{"KUBECONFIG"},
 		},
+		&cli.BoolFlag{
+			Name:        "skip-gpu-setup",
+			Usage:       "skip GPU node setup even if GPUs are present",
+			Destination: &flags.SkipGPUSetup,
+			EnvVars:     []string{"NVKIND_SKIP_GPU_SETUP"},
+		},
 	}
 
 	return &cmd
@@ -121,6 +128,9 @@ func runClusterCreate(c *cli.Context, f *ClusterCreateFlags) error {
 	}
 
 	for _, node := range nodes {
+		if f.SkipGPUSetup {
+			continue
+		}
 		if !node.HasGPUs() {
 			continue
 		}
