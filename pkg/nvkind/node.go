@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/NVIDIA/go-nvlib/pkg/nvml"
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
@@ -60,32 +60,68 @@ func (n *Node) ConfigureContainerRuntime() error {
 }
 
 func (n *Node) PatchProcDriverNvidia() error {
-	// Unmount the masked /proc/driver/nvidia to allow dynamically generated
-	// MIG devices to be discovered
-	err := n.runScript(`
-		umount -R /proc/driver/nvidia
-	`)
+	// nvidia-container-toolkit v1.19.0 added a CDI hook
+	// (`disable-device-node-modification`) that bind-mounts a tmpfs with
+	// `ModifyDeviceFiles: 0` over /proc/driver/nvidia/params whenever it
+	// injects a GPU into a container. When that hook has run we already
+	// have the state we want and the legacy masking dance below is
+	// redundant — and the first step (`umount -R /proc/driver/nvidia`)
+	// actually fails, because the new hook mounts the params file only,
+	// not the parent directory.
+	//
+	// See NVIDIA/nvidia-container-toolkit PR #927.
+	masked, err := n.isModifyDeviceFilesDisabled()
 	if err != nil {
-		return fmt.Errorf("running script on %v: %w", n.Name, err)
+		return fmt.Errorf("checking /proc/driver/nvidia/params on %v: %w", n.Name, err)
 	}
 
-	// Make it so that calls into nvidia-smi / libnvidia-ml.so do not attempt
-	// to recreate device nodes or reset their permissions if tampered with
-	err = n.runScript(`
-		cp /proc/driver/nvidia/params root/gpu-params
-		sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
-		mount --bind root/gpu-params /proc/driver/nvidia/params
-	`)
-	if err != nil {
-		return fmt.Errorf("running script on %v: %w", n.Name, err)
+	if !masked {
+		// Legacy toolkit (< v1.19.0) bind-mounted a tmpfs over the whole
+		// /proc/driver/nvidia directory, hiding the real params file.
+		// Unmount that tmpfs to expose the real file, copy it, flip
+		// ModifyDeviceFiles to 0, then bind-mount our copy back.
+		err := n.runScript(`
+			umount -R /proc/driver/nvidia
+			cp /proc/driver/nvidia/params root/gpu-params
+			sed -i 's/^ModifyDeviceFiles: 1$/ModifyDeviceFiles: 0/' root/gpu-params
+			mount --bind root/gpu-params /proc/driver/nvidia/params
+		`)
+		if err != nil {
+			return fmt.Errorf("masking /proc/driver/nvidia/params on %v: %w", n.Name, err)
+		}
 	}
 
-	// Remove the device nodes for all GPUs except those this node has access to
+	// Masking params only stops the driver from recreating device
+	// nodes on demand. The kind worker container still inherits the
+	// host's full set of /dev/nvidia* nodes at start, so remove the
+	// ones this worker should not see.
 	if err := n.removeDeviceNodes(); err != nil {
 		return fmt.Errorf("removing device nodes %v: %w", n.Name, err)
 	}
 
 	return nil
+}
+
+// isModifyDeviceFilesDisabled reports whether /proc/driver/nvidia/params
+// inside this kind worker already reads `ModifyDeviceFiles: 0`. That is
+// the masked state produced by the `disable-device-node-modification`
+// CDI hook added in nvidia-container-toolkit v1.19.0; older toolkits
+// leave the file at the driver default (`ModifyDeviceFiles: 1`).
+func (n *Node) isModifyDeviceFilesDisabled() (bool, error) {
+	cmd := exec.Command("docker", "exec", n.Name, "cat", "/proc/driver/nvidia/params")
+	output, err := cmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("reading /proc/driver/nvidia/params: %w", err)
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		switch strings.TrimSpace(line) {
+		case "ModifyDeviceFiles: 0":
+			return true, nil
+		case "ModifyDeviceFiles: 1":
+			return false, nil
+		}
+	}
+	return false, fmt.Errorf("/proc/driver/nvidia/params did not contain a ModifyDeviceFiles line")
 }
 
 func (n *Node) GetGPUInfo() ([]GPUInfo, error) {

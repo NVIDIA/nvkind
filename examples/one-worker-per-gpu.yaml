@@ -18,6 +18,8 @@ nodes:
 - role: control-plane
 {{- range $gpu := until numGPUs }}
 - role: worker
+  labels:
+    nvidia.com/gpu.present: "true"
   extraMounts:
     # We inject all NVIDIA GPUs using the nvidia-container-runtime.
     # This requires `accept-nvidia-visible-devices-as-volume-mounts = true` be set
