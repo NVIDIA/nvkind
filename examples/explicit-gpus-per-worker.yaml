@@ -24,6 +24,8 @@ nodes:
   {{- end }}
 {{- range $.workers }}
 - role: worker
+  labels:
+    nvidia.com/gpu.present: "true"
   {{- if hasKey $ "image" }}
   image: {{ $.image }}
   {{- end }}

@@ -22,7 +22,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/NVIDIA/go-nvlib/pkg/nvml"
+	"github.com/NVIDIA/go-nvml/pkg/nvml"
 	kind "sigs.k8s.io/kind/pkg/apis/config/v1alpha4"
 )
 
