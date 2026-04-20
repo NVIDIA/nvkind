@@ -1,0 +1,236 @@
+name: gpu-e2e
+
+# NVIDIA self-hosted runners refuse workflows triggered by `pull_request`
+# events from forks (policy). copy-pr-bot mirrors fork PR branches into
+# this repo under `pull-request/<N>`; we trigger on the resulting push.
+#
+# Trigger matrix:
+#   - schedule          daily smoke against main
+#   - push              main (post-merge), pull-request/<N> (bot-mirror),
+#                       gpu-ci/** (maintainer-pushed topic branches)
+#   - pull_request      only on `labeled` events — lets a maintainer kick
+#                       the run with the `run-gpu-tests` label on PRs
+#                       opened from branches in this repo
+#   - workflow_dispatch manual
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  push:
+    branches:
+      - main
+      - 'pull-request/[0-9]+'
+      - 'gpu-ci/**'
+  pull_request:
+    types: [labeled]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+
+  # Gate GPU tests on the actual PR diff (against main), not the push diff.
+  # Without this, rebasing a pull-request/<N> branch includes merged changes
+  # in the push diff, causing GPU tests to trigger for unrelated PRs.
+  check-paths:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      should-run: ${{ steps.filter.outputs.matched }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: main
+          filters: |
+            matched:
+              - '.github/workflows/gpu-e2e.yaml'
+              - 'hack/ci/**'
+              - 'cmd/**'
+              - 'pkg/**'
+              - 'examples/**'
+              - 'Makefile'
+              - 'go.mod'
+              - 'go.sum'
+              - 'vendor/modules.txt'
+
+  e2e:
+    needs: [check-paths]
+    if: >
+      always() && (
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && github.event.label.name == 'run-gpu-tests') ||
+        (github.event_name == 'push' && needs.check-paths.outputs.should-run == 'true')
+      )
+    concurrency:
+      group: gpu-e2e-${{ github.event_name }}-${{ github.ref }}-${{ matrix.arch }}
+      cancel-in-progress: ${{ startsWith(github.ref, 'refs/heads/pull-request/') || startsWith(github.ref, 'refs/heads/gpu-ci/') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: linux-amd64-gpu-t4-latest-1
+          gpu: t4
+          run-dra: true
+        - arch: arm64
+          runner: linux-arm64-gpu-l4-latest-1
+          gpu: l4
+          run-dra: false
+    name: e2e-${{ matrix.arch }}-${{ matrix.gpu }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      KIND_VERSION: v0.31.0
+      KUBECTL_VERSION: v1.35.1
+      HELM_VERSION: v3.18.1
+      KIND_NODE_IMAGE: kindest/node:v1.35.1
+      DRA_CHART_VERSION: "25.12.0"
+      CLUSTER_PREFIX: nv-${{ github.run_id }}-${{ matrix.arch }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+        cache: true
+        cache-dependency-path: |
+          go.sum
+          vendor/modules.txt
+
+    - name: Verify host GPU
+      run: |
+        nvidia-smi -L
+        test -c /dev/nvidiactl
+
+    - name: Configure docker for GPU + CDI
+      run: |
+        sudo nvidia-ctk runtime configure --runtime=docker --set-as-default --cdi.enabled
+        sudo nvidia-ctk config --set \
+          accept-nvidia-visible-devices-as-volume-mounts=true --in-place
+        sudo systemctl restart docker
+        sudo sysctl -w fs.inotify.max_user_watches=524288
+        sudo sysctl -w fs.inotify.max_user_instances=8192
+        docker run --rm -v /dev/null:/var/run/nvidia-container-devices/all \
+          ubuntu:22.04 nvidia-smi -L
+
+    - name: Install kind / kubectl / helm
+      run: |
+        curl -sSLo /tmp/kind \
+          "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${{ matrix.arch }}"
+        sudo install -m0755 /tmp/kind /usr/local/bin/kind
+        curl -sSLo /tmp/kubectl \
+          "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${{ matrix.arch }}/kubectl"
+        sudo install -m0755 /tmp/kubectl /usr/local/bin/kubectl
+        curl -sSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${{ matrix.arch }}.tar.gz" \
+          | sudo tar xz -C /usr/local/bin --strip-components=1 "linux-${{ matrix.arch }}/helm"
+
+    - name: Build nvkind
+      run: |
+        make build
+        sudo install -m0755 ./nvkind /usr/local/bin/nvkind
+        nvkind cluster --help > /dev/null
+
+    - name: S1 default cluster lifecycle
+      env:
+        CLUSTER: ${{ env.CLUSTER_PREFIX }}-default
+      run: |
+        set -x
+        nvkind cluster create --name "$CLUSTER" --image "$KIND_NODE_IMAGE"
+        nc=$(kubectl --context "kind-$CLUSTER" get nodes --no-headers | wc -l)
+        [ "$nc" -eq 2 ] || { echo "expected 2 nodes, got $nc"; exit 1; }
+        kubectl --context "kind-$CLUSTER" get nodes \
+          -l '!node-role.kubernetes.io/control-plane' \
+          -o jsonpath='{.items[0].metadata.labels.nvidia\.com/gpu\.present}' \
+          | grep -qx true
+        kubectl --context "kind-$CLUSTER" get runtimeclass nvidia > /dev/null
+        nvkind cluster print-gpus --name "$CLUSTER" | grep -qi gpu
+        kind delete cluster --name "$CLUSTER"
+
+    - name: S2 device plugin + nvidia-smi pod
+      env:
+        CLUSTER: ${{ env.CLUSTER_PREFIX }}-dp
+      run: |
+        set -x
+        nvkind cluster create --name "$CLUSTER" --image "$KIND_NODE_IMAGE"
+        helm repo add nvdp https://nvidia.github.io/k8s-device-plugin > /dev/null
+        helm --kube-context "kind-$CLUSTER" upgrade -i \
+          nvidia-device-plugin nvdp/nvidia-device-plugin \
+          -n nvidia --create-namespace \
+          --wait --timeout=120s
+        for i in $(seq 1 60); do
+          c=$(kubectl --context "kind-$CLUSTER" get nodes \
+              -o jsonpath='{.items[*].status.capacity.nvidia\.com/gpu}' \
+              | tr ' ' '\n' | grep -cvx 0 || true)
+          [ "${c:-0}" -ge 1 ] && break
+          sleep 2
+        done
+        [ "${c:-0}" -ge 1 ] || { echo "no nvidia.com/gpu capacity advertised"; exit 1; }
+        kubectl --context "kind-$CLUSTER" apply -f hack/ci/smi-pod.yaml
+        kubectl --context "kind-$CLUSTER" wait \
+          --for=jsonpath='{.status.phase}'=Succeeded pod/smi --timeout=240s
+        kubectl --context "kind-$CLUSTER" logs smi | grep -q NVIDIA-SMI
+        kind delete cluster --name "$CLUSTER"
+
+    - name: S3 DRA driver + resource claim
+      if: matrix.run-dra == true
+      env:
+        CLUSTER: ${{ env.CLUSTER_PREFIX }}-dra
+      run: |
+        set -x
+        nvkind cluster create --name "$CLUSTER" --image "$KIND_NODE_IMAGE" \
+          --config-template hack/ci/templates/dra.yaml.tmpl
+        helm repo add nvidia https://helm.ngc.nvidia.com/nvidia > /dev/null
+        helm --kube-context "kind-$CLUSTER" upgrade -i dra \
+          nvidia/nvidia-dra-driver-gpu --version "$DRA_CHART_VERSION" \
+          -n nvidia-dra-driver-gpu --create-namespace \
+          --set nvidiaDriverRoot=/ \
+          --set gpuResourcesEnabledOverride=true \
+          --wait --timeout=300s
+        for i in $(seq 1 60); do
+          c=$(kubectl --context "kind-$CLUSTER" get resourceslices \
+              --no-headers 2>/dev/null | wc -l)
+          [ "${c:-0}" -ge 1 ] && break
+          sleep 5
+        done
+        [ "${c:-0}" -ge 1 ] || { echo "no ResourceSlice published"; exit 1; }
+        kubectl --context "kind-$CLUSTER" apply -f hack/ci/dra-pod.yaml
+        kubectl --context "kind-$CLUSTER" wait \
+          --for=jsonpath='{.status.phase}'=Succeeded pod/dra-smi --timeout=240s
+        kubectl --context "kind-$CLUSTER" logs dra-smi | grep -q NVIDIA-SMI
+        kind delete cluster --name "$CLUSTER"
+
+    - name: Collect artifacts
+      if: always()
+      run: |
+        D=/tmp/nvkind-artifacts
+        mkdir -p "$D"
+        for c in $(kind get clusters 2>/dev/null); do
+          kind export logs "$D/kind-$c" --name "$c" || true
+          kubectl --context "kind-$c" get pods -A -o wide > "$D/pods-$c.txt" || true
+          kubectl --context "kind-$c" get events -A \
+            --sort-by=.lastTimestamp > "$D/events-$c.txt" || true
+        done
+        sudo cat /etc/docker/daemon.json > "$D/docker-daemon.json" 2>/dev/null || true
+        sudo cat /etc/nvidia-container-runtime/config.toml \
+          > "$D/nvidia-ctk.toml" 2>/dev/null || true
+
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: nvkind-e2e-${{ matrix.arch }}-${{ github.run_id }}
+        path: /tmp/nvkind-artifacts
+        retention-days: 7
+
+    - name: Teardown
+      if: always()
+      run: |
+        for c in $(kind get clusters 2>/dev/null | grep "^${CLUSTER_PREFIX}-" || true); do
+          kind delete cluster --name "$c" || true
+        done
+        docker system prune -f || true

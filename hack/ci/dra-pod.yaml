@@ -1,0 +1,28 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: rct-gpu
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.nvidia.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dra-smi
+spec:
+  restartPolicy: OnFailure
+  containers:
+  - name: smi
+    image: nvidia/cuda:12.5.0-devel-ubuntu22.04
+    command: ["nvidia-smi"]
+    resources:
+      claims:
+      - name: gpu
+  resourceClaims:
+  - name: gpu
+    resourceClaimTemplateName: rct-gpu
