@@ -1,0 +1,30 @@
+apiVersion: resource.k8s.io/v1
+kind: ResourceClaimTemplate
+metadata:
+  name: rct-gpu
+spec:
+  spec:
+    devices:
+      requests:
+      - name: gpu
+        exactly:
+          deviceClassName: gpu.nvidia.com
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dra-smi
+spec:
+  restartPolicy: OnFailure
+  containers:
+  - name: smi
+    image: nvidia/cuda:12.5.0-devel-ubuntu22.04
+    # Use `-L` so the log is one line per GPU (`GPU N: ... (UUID: GPU-...)`),
+    # which lets the workflow assert the pod sees exactly one GPU.
+    command: ["nvidia-smi", "-L"]
+    resources:
+      claims:
+      - name: gpu
+  resourceClaims:
+  - name: gpu
+    resourceClaimTemplateName: rct-gpu
