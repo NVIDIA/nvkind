@@ -322,6 +322,57 @@ GPU 0: NVIDIA A100-SXM4-40GB (UUID: GPU-4cf8db2d-06c0-7d70-1a51-e59b25b2c16c)
 GPU 1: NVIDIA A100-SXM4-40GB (UUID: GPU-4404041a-04cf-1ccf-9e70-f139a9b1e23c)
 ```
 
+## Install GPU Operator
+
+If you want to install the NVIDIA GPU Operator in a Docker-based `nvkind`
+environment, follow
+[examples/gpu-operator/README.md](examples/gpu-operator/README.md).
+
+Assuming a cluster has been created as described in the [quickstart
+guide](#quickstart) above, the `gpu-operator` can be installed on the cluster
+as appropriate. For the purposes of this example, we will install the
+`gpu-operator` directly.
+
+First, add the `helm` repo for the `gpu-operator`:
+```bash
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update
+```
+
+Then pick the cluster you want to install to:
+```bash
+export KIND_CLUSTER_NAME=evenly-distributed-2-by-4
+```
+
+Create the namespace and apply the required pod security label:
+```bash
+kubectl --context=kind-${KIND_CLUSTER_NAME} create namespace gpu-operator --dry-run=client -o yaml | kubectl apply -f -
+kubectl --context=kind-${KIND_CLUSTER_NAME} label namespace gpu-operator pod-security.kubernetes.io/enforce=privileged --overwrite
+```
+
+And install the `gpu-operator` as follows:
+```bash
+helm upgrade -i     --kube-context=kind-${KIND_CLUSTER_NAME}     --namespace gpu-operator     --create-namespace     --wait     nvidia-gpu-operator nvidia/gpu-operator     --set cdi.enabled=true     --set driver.enabled=false     --set operator.runtimeClass=nvidia
+```
+
+Running the following verifies that the pods for the operator are coming online:
+```bash
+kubectl --context=kind-${KIND_CLUSTER_NAME} get clusterpolicy -A
+kubectl --context=kind-${KIND_CLUSTER_NAME} get pods -n gpu-operator
+kubectl --context=kind-${KIND_CLUSTER_NAME} get ds -n gpu-operator
+```
+
+Running the following verifies that a workload can be deployed and run on a set
+of GPUs in this cluster:
+
+```bash
+kubectl --context=kind-${KIND_CLUSTER_NAME} apply -f examples/gpu-operator/gpu-pod.yml
+kubectl --context=kind-${KIND_CLUSTER_NAME} logs gpu-pod
+```
+
+For a more automated walkthrough, including host preparation and troubleshooting,
+see [examples/gpu-operator/README.md](examples/gpu-operator/README.md).
+
 ## Delete all clusters
 
 The following command can be used to delete all `kind` clusters:
