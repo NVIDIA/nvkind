@@ -50,7 +50,7 @@ func (n *Node) InstallContainerToolkit() error {
 
 func (n *Node) ConfigureContainerRuntime() error {
 	err := n.runScript(`
-	    nvidia-ctk runtime configure --runtime=containerd --config-source=command
+	    nvidia-ctk runtime configure --runtime=containerd --config-source=file
 	    systemctl restart containerd
 	`)
 	if err != nil {
