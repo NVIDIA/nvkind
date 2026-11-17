@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -199,7 +200,7 @@ func (c *Cluster) GetNodes() ([]Node, error) {
 	}
 
 	nodeNamesList := strings.Fields(string(output))
-	sort.Strings(nodeNamesList)
+	sortNodeNames(nodeNamesList)
 
 	nodeNames := make(map[kind.NodeRole][]string)
 	for _, node := range nodeNamesList {
@@ -247,6 +248,31 @@ func (c *Cluster) GetNodes() ([]Node, error) {
 	}
 
 	return nodes, nil
+}
+
+// sortNodeNames sorts node names in the order kind created them. kind names
+// the nodes of a role <cluster>-<role>, <cluster>-<role>2, <cluster>-<role>3,
+// and so on, in the order they appear in the cluster config, so the numeric
+// suffix has to be compared as a number: a plain string sort would put
+// <cluster>-worker10 before <cluster>-worker2.
+func sortNodeNames(names []string) {
+	split := func(name string) (string, int) {
+		prefix := strings.TrimRightFunc(name, unicode.IsDigit)
+		index, err := strconv.Atoi(name[len(prefix):])
+		if err != nil {
+			// The first node of a role has no numeric suffix.
+			index = 1
+		}
+		return prefix, index
+	}
+	sort.SliceStable(names, func(i, j int) bool {
+		pi, ni := split(names[i])
+		pj, nj := split(names[j])
+		if pi != pj {
+			return pi < pj
+		}
+		return ni < nj
+	})
 }
 
 func (o *ClusterOptions) setConfig() error {
